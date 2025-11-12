@@ -1,0 +1,23 @@
+{
+  "name": "riscv-assembler-ui",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "frontend": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5173",
+    "server": "node server/index.js",
+    "dev": "concurrently \"npm:server\" \"npm:frontend\""
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "vite": "^5.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}

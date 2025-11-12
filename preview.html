@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RISC-V Assembly Executor</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --primary-dark: #4f46e5;
+            --secondary: #ec4899;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --border: #e2e8f0;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --code-bg: #f1f5f9;
+            --active-line: #dbeafe;
+            --executed-line: #d1fae5;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .header {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 968px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            min-height: 500px;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .panel-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .badge {
+            background: var(--primary);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .code-container {
+            flex: 1;
+            background: var(--code-bg);
+            border-radius: 12px;
+            padding: 16px;
+            overflow-y: auto;
+            max-height: 400px;
+            margin-bottom: 16px;
+            border: 2px solid var(--border);
+        }
+
+        .code-line {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            font-family: 'Courier New', 'Consolas', monospace;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            background: var(--surface);
+            border: 1px solid transparent;
+        }
+
+        .code-line.active {
+            background: var(--active-line);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            transform: scale(1.02);
+            font-weight: 600;
+        }
+
+        .code-line.executed {
+            background: var(--executed-line);
+            border-color: var(--success);
+            opacity: 0.8;
+        }
+
+        .line-number {
+            min-width: 40px;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-right: 16px;
+            text-align: right;
+        }
+
+        .line-content {
+            flex: 1;
+            color: var(--text-primary);
+        }
+
+        .machine-line .address {
+            color: var(--primary);
+            font-weight: 600;
+            margin-right: 16px;
+            min-width: 100px;
+        }
+
+        .machine-line .machine-code {
+            color: var(--secondary);
+            font-weight: 700;
+        }
+
+        .code-editor {
+            width: 100%;
+            min-height: 180px;
+            background: var(--code-bg);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            font-family: 'Courier New', 'Consolas', monospace;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            resize: vertical;
+            transition: border-color 0.3s ease;
+        }
+
+        .code-editor:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 300px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .empty-icon {
+            font-size: 4rem;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state p {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .empty-state small {
+            font-size: 0.875rem;
+        }
+
+        .error-message {
+            background: #fee2e2;
+            border: 2px solid var(--error);
+            border-radius: 12px;
+            padding: 16px;
+            color: #991b1b;
+            font-weight: 500;
+            margin-top: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .error-icon {
+            font-size: 1.5rem;
+        }
+
+        .controls-panel {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .divider {
+            width: 2px;
+            height: 40px;
+            background: var(--border);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%);
+        }
+
+        .btn-secondary {
+            background: var(--text-muted);
+            color: white;
+        }
+
+        .btn-step {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-play {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-reset {
+            background: var(--warning);
+            color: white;
+        }
+
+        .execution-info {
+            margin-left: auto;
+            display: flex;
+            gap: 24px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .footer {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 20px;
+            margin-top: 24px;
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+
+        .footer p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1>🚀 RISC-V Assembly Executor</h1>
+                <p class="subtitle">Line-by-line assembly code visualization</p>
+            </div>
+        </header>
+
+        <div class="main-grid">
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">📝 Assembly Code</span>
+                    <span class="badge" id="asm-count">0 lines</span>
+                </div>
+                <div class="code-container" id="asm-display"></div>
+                <textarea 
+                    class="code-editor"
+                    id="asm-input"
+                    placeholder="Enter your RISC-V assembly code here..."
+>.text
+addi x1, x0, 5
+add x2, x1, x1
+beq x1, x2, end
+sub x3, x2, x1
+end:</textarea>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">⚙️ Machine Code</span>
+                    <span class="badge" id="mc-count">0 instructions</span>
+                </div>
+                <div class="code-container" id="machine-code-display">
+                    <div class="empty-state">
+                        <span class="empty-icon">📦</span>
+                        <p>No machine code yet</p>
+                        <small>Click "Assemble" to generate machine code</small>
+                    </div>
+                </div>
+                <div id="error-container"></div>
+            </div>
+        </div>
+
+        <div class="controls-panel">
+            <div class="control-group">
+                <button class="btn btn-primary" id="assemble-btn">🔨 Assemble</button>
+                <button class="btn btn-secondary" id="clear-btn">🗑️ Clear</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="control-group">
+                <button class="btn btn-step" id="prev-btn" disabled>⏮️ Prev</button>
+                <button class="btn btn-step" id="next-btn" disabled>Next ⏭️</button>
+                <button class="btn btn-play" id="auto-btn" disabled>▶️ Auto Run</button>
+                <button class="btn btn-reset" id="reset-btn" disabled>🔄 Reset</button>
+            </div>
+
+            <div class="execution-info">
+                <div class="info-item">
+                    <span class="info-label">Current Line:</span>
+                    <span class="info-value" id="current-line">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Progress:</span>
+                    <span class="info-value" id="progress">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>💡 Enter assembly code, click Assemble, then use step controls to execute line by line</p>
+        </footer>
+    </div>
+
+    <script>
+        let machineCode = [];
+        let currentLine = -1;
+        let executing = false;
+        let asmLines = [];
+
+        const asmInput = document.getElementById('asm-input');
+        const asmDisplay = document.getElementById('asm-display');
+        const mcDisplay = document.getElementById('machine-code-display');
+        const errorContainer = document.getElementById('error-container');
+        const assembleBtn = document.getElementById('assemble-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const autoBtn = document.getElementById('auto-btn');
+        const resetBtn = document.getElementById('reset-btn');
+
+        function updateAsmDisplay() {
+            asmLines = asmInput.value.split('\n').filter(l => l.trim());
+            document.getElementById('asm-count').textContent = `${asmLines.length} lines`;
+            
+            asmDisplay.innerHTML = asmLines.map((line, idx) => `
+                <div class="code-line ${currentLine === idx ? 'active' : ''} ${currentLine > idx ? 'executed' : ''}" data-idx="${idx}">
+                    <span class="line-number">${idx + 1}</span>
+                    <span class="line-content">${escapeHtml(line)}</span>
+                </div>
+            `).join('');
+        }
+
+        function updateMcDisplay() {
+            if (machineCode.length === 0) {
+                mcDisplay.innerHTML = `
+                    <div class="empty-state">
+                        <span class="empty-icon">📦</span>
+                        <p>No machine code yet</p>
+                        <small>Click "Assemble" to generate machine code</small>
+                    </div>
+                `;
+            } else {
+                mcDisplay.innerHTML = machineCode.map((item, idx) => `
+                    <div class="code-line machine-line ${currentLine === idx ? 'active' : ''} ${currentLine > idx ? 'executed' : ''}" data-idx="${idx}">
+                        <span class="line-number">${idx + 1}</span>
+                        <span class="address">${item.address}</span>
+                        <span class="machine-code">${item.machineCode}</span>
+                    </div>
+                `).join('');
+            }
+            document.getElementById('mc-count').textContent = `${machineCode.length} instructions`;
+        }
+
+        function updateInfo() {
+            document.getElementById('current-line').textContent = currentLine === -1 ? '-' : currentLine + 1;
+            const prog = machineCode.length === 0 ? 0 : 
+                        currentLine === -1 ? 0 : 
+                        Math.round(((currentLine + 1) / machineCode.length) * 100);
+            document.getElementById('progress').textContent = `${prog}%`;
+        }
+
+        function updateButtons() {
+            prevBtn.disabled = currentLine <= -1 || executing || machineCode.length === 0;
+            nextBtn.disabled = currentLine >= machineCode.length - 1 || executing || machineCode.length === 0;
+            autoBtn.disabled = executing || machineCode.length === 0;
+            resetBtn.disabled = executing || machineCode.length === 0;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function assemble() {
+            assembleBtn.disabled = true;
+            assembleBtn.textContent = '⏳ Assembling...';
+            errorContainer.innerHTML = '';
+            machineCode = [];
+            currentLine = -1;
+
+            try {
+                const resp = await fetch('/api/assemble', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: asmInput.value
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.text();
+                    errorContainer.innerHTML = `
+                        <div class="error-message">
+                            <span class="error-icon">⚠️</span>
+                            Error: ${escapeHtml(err)}
+                        </div>
+                    `;
+                } else {
+                    const txt = await resp.text();
+                    const lines = txt.trim().split('\n').filter(l => l.trim());
+                    machineCode = lines.map(line => {
+                        const parts = line.trim().split(/\s+/);
+                        return {
+                            address: parts[0] || '0x00000000',
+                            machineCode: parts[1] || '0x00000000'
+                        };
+                    });
+                }
+            } catch (e) {
+                errorContainer.innerHTML = `
+                    <div class="error-message">
+                        <span class="error-icon">⚠️</span>
+                        Error: ${escapeHtml(e.message)}
+                    </div>
+                `;
+            }
+
+            assembleBtn.disabled = false;
+            assembleBtn.textContent = '🔨 Assemble';
+            updateAsmDisplay();
+            updateMcDisplay();
+            updateInfo();
+            updateButtons();
+        }
+
+        function stepForward() {
+            if (currentLine < machineCode.length - 1) {
+                currentLine++;
+                updateAsmDisplay();
+                updateMcDisplay();
+                updateInfo();
+                updateButtons();
+            }
+        }
+
+        function stepBackward() {
+            if (currentLine > 0) {
+                currentLine--;
+            } else if (currentLine === -1 && machineCode.length > 0) {
+                currentLine = 0;
+            }
+            updateAsmDisplay();
+            updateMcDisplay();
+            updateInfo();
+            updateButtons();
+        }
+
+        function reset() {
+            currentLine = -1;
+            updateAsmDisplay();
+            updateMcDisplay();
+            updateInfo();
+            updateButtons();
+        }
+
+        async function autoExecute() {
+            if (machineCode.length === 0) return;
+            executing = true;
+            autoBtn.textContent = '⏸️ Running...';
+            updateButtons();
+            
+            currentLine = 0;
+            for (let i = 0; i < machineCode.length; i++) {
+                currentLine = i;
+                updateAsmDisplay();
+                updateMcDisplay();
+                updateInfo();
+                await new Promise(resolve => setTimeout(resolve, 800));
+            }
+            
+            executing = false;
+            autoBtn.textContent = '▶️ Auto Run';
+            updateButtons();
+        }
+
+        function clear() {
+            asmInput.value = '';
+            machineCode = [];
+            currentLine = -1;
+            errorContainer.innerHTML = '';
+            updateAsmDisplay();
+            updateMcDisplay();
+            updateInfo();
+            updateButtons();
+        }
+
+        // Event listeners
+        assembleBtn.addEventListener('click', assemble);
+        clearBtn.addEventListener('click', clear);
+        prevBtn.addEventListener('click', stepBackward);
+        nextBtn.addEventListener('click', stepForward);
+        autoBtn.addEventListener('click', autoExecute);
+        resetBtn.addEventListener('click', reset);
+        asmInput.addEventListener('input', updateAsmDisplay);
+
+        // Initial render
+        updateAsmDisplay();
+        updateInfo();
+        updateButtons();
+    </script>
+</body>
+</html>
