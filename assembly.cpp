@@ -63,8 +63,8 @@ void init(){
     U("auipc",0x17);U("lui",0x37);
     UJ("jal",0x6f);
     I("ecall", 0x73, 0x0);
-   R("mul",0x33,0x0,0x01);;R("mulw",0x3b,0x0,0x01);R("div",0x3b,0x4,0x01);R("divw",0x3b,0x4,0x01);
-    R("rem",0x3b,0x6,0x01);R("remw",0x3b,0x6,0x01);
+    R("mul",0x33,0x0,0x01);R("mulw",0x3b,0x0,0x01);R("div",0x33,0x4,0x01);R("divw",0x3b,0x4,0x01);
+    R("rem",0x33,0x6,0x01);R("remw",0x3b,0x6,0x01);
 }
 
 
@@ -190,13 +190,14 @@ int main(){
         al.toks=toks;
         al.seg=curSeg;
         al.addr=curAddr;
-        parsed.push_back(al);
         if(curSeg=="text"){
             al.isInstr=true;
+            parsed.push_back(al);
             curAddr+=4;
             pc_text=curAddr;
         }else if(curSeg=="data"){
             al.isInstr=false;
+            parsed.push_back(al);
             if(toks[0]==".word"){
                 curAddr+=4*(toks.size()-1);
             }else if(toks[0]==".space"){
@@ -224,20 +225,32 @@ int main(){
                     word=((int)def.funct7<<25)|(rs2<<20)|(rs1<<15)|(def.funct3<<12)|(rd<<7)|(def.opcode);
                 }
                 else if(def.fmt=="I"){
-                    int rd=rg(toks[1]);
-                    int rs1;
-                    int imm;
-                    // --- Special check for ecall ---
+                    int rd=0,rs1=0,imm=0;
+                    // --- Special check for ecall --- no operands
                     if (mnemonic == "ecall") {
-                        rs1 = 0;
-                        imm = 0;
-                    } 
-                    // --- Standard I-type logic ---
+                        rd = 0; rs1 = 0; imm = 0;
+                    }
+                    // --- Load instructions use imm(rs1) syntax ---
                     else if(mnemonic=="lb"||mnemonic=="ld"||mnemonic=="lh"||mnemonic=="lw"){
+                        rd=rg(toks[1]);
                         auto imm_base=pib(toks[2]);
                         imm=imm_base.first;
                         rs1=imm_base.second;
-                    }else{
+                    }
+                    // --- jalr supports both rd, imm(rs1) and rd, rs1, imm ---
+                    else if(mnemonic=="jalr"){
+                        rd=rg(toks[1]);
+                        if(toks.size()>=3 && toks[2].find('(')!=string::npos){
+                            auto imm_base=pib(toks[2]);
+                            imm=imm_base.first;
+                            rs1=imm_base.second;
+                        }else{
+                            rs1=rg(toks[2]);
+                            imm=pil(toks[3],labelAddr);
+                        }
+                    }
+                    else{
+                        rd=rg(toks[1]);
                         rs1=rg(toks[2]);
                         imm=pil(toks[3],labelAddr);
                     }
@@ -257,9 +270,11 @@ int main(){
                 else if(def.fmt=="SB"){
                     int rs1=rg(toks[1]);int rs2=rg(toks[2]);string lbl=toks[3];
                     int offset=(int)labelAddr[lbl]-(int)al.addr;int imm=(int)offset;
-                    int imm_shift=imm>>1;
-                    int bit12=(imm_shift>>11)&1;int bits10_5=(imm_shift>>5)&0x3F;
-                    int bits4_1=(imm_shift>>1)&0xF;int bit11=(imm_shift>>10)&1;
+                    // Correct RISC-V B-type encoding: imm[12|10:5] rs2 rs1 funct3 imm[4:1|11]
+                    int bit12   = (imm >> 12) & 1;
+                    int bits10_5= (imm >> 5)  & 0x3F;
+                    int bits4_1 = (imm >> 1)  & 0xF;
+                    int bit11   = (imm >> 11) & 1;
                     word=(bit12<<31)|(bits10_5<<25)|(rs2<<20)|(rs1<<15)|(def.funct3<<12)|(bits4_1<<8)|(bit11<<7)|(def.opcode);
                 }
                 else if(def.fmt=="U"){
@@ -271,9 +286,11 @@ int main(){
                 else if(def.fmt=="UJ"){
                     int rd=rg(toks[1]);string lbl=toks[2];
                     int offset=(int)labelAddr[lbl]-(int)al.addr;int imm=(int)offset;
-                    int imm_shift=(int)(imm>>1)&0xFFFFF;
-                    int b20=(imm_shift>>19)&1;int b10_1=(imm_shift>>9)&0x3FF;
-                    int b11=(imm_shift>>8)&1;int b19_12=imm_shift&0xFF;
+                    // Correct RISC-V J-type encoding: imm[20|10:1|11|19:12]
+                    int b20    = (imm >> 20) & 1;
+                    int b10_1  = (imm >> 1)  & 0x3FF;
+                    int b11    = (imm >> 11) & 1;
+                    int b19_12 = (imm >> 12) & 0xFF;
                     word=(b20<<31)|(b10_1<<21)|(b11<<20)|(b19_12<<12)|(rd<<7)|(def.opcode);
                 }
                 fout<<"0x"<<hex<<al.addr<<" 0x"<<setw(8)<<setfill('0')<<hex<<word<<"\n";
